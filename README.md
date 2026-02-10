@@ -49,5 +49,6 @@ API URL: <http://localhost:3001/api/claims>
 
 - Displays rows from `reklamacje` in a responsive table.
 - Global search field that filters by every visible field.
-- Adding new claim records in a dedicated modal window.
+- Button "Dodaj niezgodność" opens a dedicated modal form for new records.
+- Automatic defaults on create: `id` autoincrement, `data_zgloszenia` current date, `status`=`Nowe`, `utworzono` current datetime, `claim_number` in format `NZG-YYYY-001`.
 - Editing in a dedicated modal window with save/cancel actions.

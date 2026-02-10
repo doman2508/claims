@@ -39,6 +39,34 @@ function allQuery(db, sql, params = []) {
   });
 }
 
+function formatDateOnly(date) {
+  return date.toISOString().slice(0, 10);
+}
+
+function formatDateTime(date) {
+  return date.toISOString().slice(0, 19).replace('T', ' ');
+}
+
+async function generateClaimNumber(db, year) {
+  const prefix = `NZG-${year}-`;
+  const rows = await allQuery(
+    db,
+    'SELECT claim_number FROM reklamacje WHERE claim_number LIKE ?',
+    [`${prefix}%`]
+  );
+
+  let maxSequence = 0;
+  for (const row of rows) {
+    const value = String(row.claim_number ?? '');
+    const sequencePart = value.slice(prefix.length);
+    if (/^\d+$/.test(sequencePart)) {
+      maxSequence = Math.max(maxSequence, Number(sequencePart));
+    }
+  }
+
+  return `${prefix}${String(maxSequence + 1).padStart(3, '0')}`;
+}
+
 app.get('/api/claims', async (req, res) => {
   const db = openDb(sqlite3.OPEN_READONLY);
   try {
@@ -56,30 +84,42 @@ app.post('/api/claims', async (req, res) => {
 
   try {
     const schemaRows = await allQuery(db, 'PRAGMA table_info(reklamacje)');
-    const columns = schemaRows.map((row) => row.name);
-    const requiredColumns = schemaRows.filter((row) => row.notnull === 1 && row.dflt_value == null).map((row) => row.name);
-
+    const columns = new Set(schemaRows.map((row) => row.name));
     const incoming = req.body && typeof req.body === 'object' ? req.body : {};
 
-    const allowedEntries = Object.entries(incoming).filter(([key]) => columns.includes(key));
-
-    const missingRequired = requiredColumns.filter((column) =>
-      !allowedEntries.some(([key, value]) => key === column && value !== null && String(value).trim() !== '')
+    const disallowedOnCreate = new Set(['id', '_rowid_', 'claim_number', 'data_zgloszenia', 'status', 'utworzono']);
+    const allowedEntries = Object.entries(incoming).filter(
+      ([key]) => columns.has(key) && !disallowedOnCreate.has(key)
     );
 
-    if (missingRequired.length) {
-      res.status(400).json({ error: `Missing required fields: ${missingRequired.join(', ')}` });
-      return;
+    const now = new Date();
+    const year = now.getFullYear();
+
+    const defaultEntries = [];
+    if (columns.has('data_zgloszenia')) {
+      defaultEntries.push(['data_zgloszenia', formatDateOnly(now)]);
+    }
+    if (columns.has('status')) {
+      defaultEntries.push(['status', 'Nowe']);
+    }
+    if (columns.has('utworzono')) {
+      defaultEntries.push(['utworzono', formatDateTime(now)]);
+    }
+    if (columns.has('claim_number')) {
+      const nextClaimNumber = await generateClaimNumber(db, year);
+      defaultEntries.push(['claim_number', nextClaimNumber]);
     }
 
-    if (!allowedEntries.length) {
+    const entries = [...defaultEntries, ...allowedEntries];
+
+    if (!entries.length) {
       res.status(400).json({ error: 'No valid fields provided.' });
       return;
     }
 
-    const columnList = allowedEntries.map(([column]) => `"${column.replaceAll('"', '""')}"`).join(', ');
-    const placeholders = allowedEntries.map(() => '?').join(', ');
-    const values = allowedEntries.map(([, value]) => value);
+    const columnList = entries.map(([column]) => `"${column.replaceAll('"', '""')}"`).join(', ');
+    const placeholders = entries.map(() => '?').join(', ');
+    const values = entries.map(([, value]) => value);
 
     const result = await runQuery(db, `INSERT INTO reklamacje (${columnList}) VALUES (${placeholders})`, values);
     const createdRows = await allQuery(db, 'SELECT rowid AS _rowid_, * FROM reklamacje WHERE rowid = ?', [result.lastID]);
