@@ -5,6 +5,9 @@ function App() {
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [editingRowId, setEditingRowId] = useState(null);
+  const [editDraft, setEditDraft] = useState({});
+  const [savingRowId, setSavingRowId] = useState(null);
 
   useEffect(() => {
     async function loadClaims() {
@@ -26,6 +29,7 @@ function App() {
   }, []);
 
   const columns = useMemo(() => (claims[0] ? Object.keys(claims[0]) : []), [claims]);
+  const editableColumns = useMemo(() => columns.filter((column) => column !== '_rowid_'), [columns]);
 
   const filteredClaims = useMemo(() => {
     if (!query.trim()) {
@@ -37,6 +41,55 @@ function App() {
       Object.values(claim).some((value) => String(value ?? '').toLowerCase().includes(needle))
     );
   }, [claims, query]);
+
+  function startEdit(claim) {
+    setEditingRowId(claim._rowid_);
+    const draft = {};
+    editableColumns.forEach((column) => {
+      draft[column] = String(claim[column] ?? '');
+    });
+    setEditDraft(draft);
+    setError('');
+  }
+
+  function cancelEdit() {
+    setEditingRowId(null);
+    setEditDraft({});
+  }
+
+  async function saveEdit() {
+    if (editingRowId == null) {
+      return;
+    }
+
+    setSavingRowId(editingRowId);
+    setError('');
+
+    try {
+      const response = await fetch(`/api/claims/${editingRowId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(editDraft)
+      });
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload.error || 'Failed to save row');
+      }
+
+      const updatedRow = await response.json();
+      setClaims((previous) =>
+        previous.map((claim) => (claim._rowid_ === updatedRow._rowid_ ? updatedRow : claim))
+      );
+      cancelEdit();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSavingRowId(null);
+    }
+  }
 
   return (
     <main className="min-h-screen bg-slate-100 p-6 text-slate-800">
@@ -62,46 +115,94 @@ function App() {
         </header>
 
         {loading ? <p className="text-slate-500">Loading claims...</p> : null}
-        {error ? <p className="font-medium text-red-600">{error}</p> : null}
+        {error ? <p className="mb-3 font-medium text-red-600">{error}</p> : null}
 
         {!loading && !error && (
-          <>
-            <p className="mb-3 text-sm text-slate-500">
-              Showing <span className="font-semibold text-slate-700">{filteredClaims.length}</span> of{' '}
-              <span className="font-semibold text-slate-700">{claims.length}</span> rows
-            </p>
-            <div className="overflow-x-auto rounded-lg border border-slate-200">
-              <table className="min-w-full divide-y divide-slate-200 text-sm">
-                <thead className="bg-slate-50">
-                  <tr>
-                    {columns.map((column) => (
-                      <th key={column} className="px-4 py-3 text-left font-semibold uppercase tracking-wide text-slate-600">
-                        {column}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 bg-white">
-                  {filteredClaims.map((claim, index) => (
-                    <tr key={claim.id ?? index} className="hover:bg-slate-50">
+          <p className="mb-3 text-sm text-slate-500">
+            Showing <span className="font-semibold text-slate-700">{filteredClaims.length}</span> of{' '}
+            <span className="font-semibold text-slate-700">{claims.length}</span> rows
+          </p>
+        )}
+
+        {!loading && (
+          <div className="overflow-x-auto rounded-lg border border-slate-200">
+            <table className="min-w-full divide-y divide-slate-200 text-sm">
+              <thead className="bg-slate-50">
+                <tr>
+                  {columns.map((column) => (
+                    <th key={column} className="px-4 py-3 text-left font-semibold uppercase tracking-wide text-slate-600">
+                      {column}
+                    </th>
+                  ))}
+                  <th className="px-4 py-3 text-left font-semibold uppercase tracking-wide text-slate-600">actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 bg-white">
+                {filteredClaims.map((claim, index) => {
+                  const rowId = claim._rowid_ ?? index;
+                  const isEditing = editingRowId === rowId;
+                  const isSaving = savingRowId === rowId;
+
+                  return (
+                    <tr key={rowId} className="hover:bg-slate-50">
                       {columns.map((column) => (
-                        <td key={`${claim.id ?? index}-${column}`} className="px-4 py-3 align-top text-slate-700">
-                          {String(claim[column] ?? '')}
+                        <td key={`${rowId}-${column}`} className="px-4 py-3 align-top text-slate-700">
+                          {isEditing && column !== '_rowid_' ? (
+                            <input
+                              value={editDraft[column] ?? ''}
+                              onChange={(event) =>
+                                setEditDraft((draft) => ({
+                                  ...draft,
+                                  [column]: event.target.value
+                                }))
+                              }
+                              className="w-full min-w-28 rounded border border-slate-300 px-2 py-1 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            />
+                          ) : (
+                            String(claim[column] ?? '')
+                          )}
                         </td>
                       ))}
-                    </tr>
-                  ))}
-                  {!filteredClaims.length && (
-                    <tr>
-                      <td className="px-4 py-8 text-center text-slate-500" colSpan={Math.max(columns.length, 1)}>
-                        No rows match your search.
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        {isEditing ? (
+                          <div className="flex gap-2">
+                            <button
+                              onClick={saveEdit}
+                              disabled={isSaving}
+                              className="rounded bg-blue-600 px-3 py-1.5 text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
+                            >
+                              {isSaving ? 'Saving...' : 'Save'}
+                            </button>
+                            <button
+                              onClick={cancelEdit}
+                              disabled={isSaving}
+                              className="rounded border border-slate-300 px-3 py-1.5 text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => startEdit(claim)}
+                            className="rounded border border-blue-300 px-3 py-1.5 text-blue-700 hover:bg-blue-50"
+                          >
+                            Edit
+                          </button>
+                        )}
                       </td>
                     </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </>
+                  );
+                })}
+                {!filteredClaims.length && (
+                  <tr>
+                    <td className="px-4 py-8 text-center text-slate-500" colSpan={Math.max(columns.length + 1, 1)}>
+                      No rows match your search.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
     </main>
