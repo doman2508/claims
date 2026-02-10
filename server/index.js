@@ -51,6 +51,46 @@ app.get('/api/claims', async (req, res) => {
   }
 });
 
+app.post('/api/claims', async (req, res) => {
+  const db = openDb(sqlite3.OPEN_READWRITE);
+
+  try {
+    const schemaRows = await allQuery(db, 'PRAGMA table_info(reklamacje)');
+    const columns = schemaRows.map((row) => row.name);
+    const requiredColumns = schemaRows.filter((row) => row.notnull === 1 && row.dflt_value == null).map((row) => row.name);
+
+    const incoming = req.body && typeof req.body === 'object' ? req.body : {};
+
+    const allowedEntries = Object.entries(incoming).filter(([key]) => columns.includes(key));
+
+    const missingRequired = requiredColumns.filter((column) =>
+      !allowedEntries.some(([key, value]) => key === column && value !== null && String(value).trim() !== '')
+    );
+
+    if (missingRequired.length) {
+      res.status(400).json({ error: `Missing required fields: ${missingRequired.join(', ')}` });
+      return;
+    }
+
+    if (!allowedEntries.length) {
+      res.status(400).json({ error: 'No valid fields provided.' });
+      return;
+    }
+
+    const columnList = allowedEntries.map(([column]) => `"${column.replaceAll('"', '""')}"`).join(', ');
+    const placeholders = allowedEntries.map(() => '?').join(', ');
+    const values = allowedEntries.map(([, value]) => value);
+
+    const result = await runQuery(db, `INSERT INTO reklamacje (${columnList}) VALUES (${placeholders})`, values);
+    const createdRows = await allQuery(db, 'SELECT rowid AS _rowid_, * FROM reklamacje WHERE rowid = ?', [result.lastID]);
+    res.status(201).json(createdRows[0]);
+  } catch (error) {
+    res.status(500).json({ error: `Failed to create row: ${error.message}` });
+  } finally {
+    db.close();
+  }
+});
+
 app.put('/api/claims/:rowId', async (req, res) => {
   const db = openDb(sqlite3.OPEN_READWRITE);
   const rowId = Number(req.params.rowId);

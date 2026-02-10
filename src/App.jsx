@@ -8,6 +8,9 @@ function App() {
   const [editingClaim, setEditingClaim] = useState(null);
   const [editDraft, setEditDraft] = useState({});
   const [isSaving, setIsSaving] = useState(false);
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [newClaimDraft, setNewClaimDraft] = useState({});
+  const [isCreating, setIsCreating] = useState(false);
 
   useEffect(() => {
     async function loadClaims() {
@@ -56,6 +59,49 @@ function App() {
     setEditingClaim(null);
     setEditDraft({});
     setIsSaving(false);
+  }
+
+  function openAddModal() {
+    const draft = {};
+    editableColumns.forEach((column) => {
+      draft[column] = '';
+    });
+    setNewClaimDraft(draft);
+    setIsAddModalOpen(true);
+    setError('');
+  }
+
+  function closeAddModal() {
+    setIsAddModalOpen(false);
+    setNewClaimDraft({});
+    setIsCreating(false);
+  }
+
+  async function createClaim() {
+    setIsCreating(true);
+    setError('');
+
+    try {
+      const response = await fetch('/api/claims', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(newClaimDraft)
+      });
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload.error || 'Failed to create claim');
+      }
+
+      const createdRow = await response.json();
+      setClaims((previous) => [createdRow, ...previous]);
+      closeAddModal();
+    } catch (err) {
+      setError(err.message);
+      setIsCreating(false);
+    }
   }
 
   async function saveEdit() {
@@ -114,15 +160,25 @@ function App() {
           </div>
         </header>
 
+        <div className="mb-4 flex items-center justify-between">
+          {!loading && !error && (
+            <p className="text-sm text-slate-500">
+              Showing <span className="font-semibold text-slate-700">{filteredClaims.length}</span> of{' '}
+              <span className="font-semibold text-slate-700">{claims.length}</span> rows
+            </p>
+          )}
+
+          <button
+            onClick={openAddModal}
+            disabled={!editableColumns.length || loading}
+            className="rounded bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-emerald-300"
+          >
+            + Add new claim
+          </button>
+        </div>
+
         {loading ? <p className="text-slate-500">Loading claims...</p> : null}
         {error ? <p className="mb-3 font-medium text-red-600">{error}</p> : null}
-
-        {!loading && !error && (
-          <p className="mb-3 text-sm text-slate-500">
-            Showing <span className="font-semibold text-slate-700">{filteredClaims.length}</span> of{' '}
-            <span className="font-semibold text-slate-700">{claims.length}</span> rows
-          </p>
-        )}
 
         {!loading && (
           <div className="overflow-x-auto rounded-lg border border-slate-200">
@@ -171,6 +227,63 @@ function App() {
           </div>
         )}
       </div>
+
+      {isAddModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
+          <div className="max-h-[90vh] w-full max-w-3xl overflow-hidden rounded-xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+              <div>
+                <h2 className="text-xl font-semibold text-slate-800">Add new claim</h2>
+                <p className="text-sm text-slate-500">Fill fields and save to create record.</p>
+              </div>
+              <button
+                onClick={closeAddModal}
+                disabled={isCreating}
+                className="rounded border border-slate-300 px-3 py-1.5 text-slate-600 hover:bg-slate-100 disabled:opacity-50"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="max-h-[60vh] overflow-y-auto px-6 py-5">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                {editableColumns.map((column) => (
+                  <div key={column} className="flex flex-col gap-1">
+                    <label className="text-sm font-medium text-slate-700">{column}</label>
+                    <input
+                      value={newClaimDraft[column] ?? ''}
+                      onChange={(event) =>
+                        setNewClaimDraft((draft) => ({
+                          ...draft,
+                          [column]: event.target.value
+                        }))
+                      }
+                      className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 border-t border-slate-200 px-6 py-4">
+              <button
+                onClick={closeAddModal}
+                disabled={isCreating}
+                className="rounded border border-slate-300 px-4 py-2 text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={createClaim}
+                disabled={isCreating}
+                className="rounded bg-emerald-600 px-4 py-2 text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-emerald-300"
+              >
+                {isCreating ? 'Creating...' : 'Create claim'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {editingClaim && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">

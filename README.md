@@ -49,4 +49,5 @@ API URL: <http://localhost:3001/api/claims>
 
 - Displays rows from `reklamacje` in a responsive table.
 - Global search field that filters by every visible field.
+- Adding new claim records in a dedicated modal window.
 - Editing in a dedicated modal window with save/cancel actions.
