@@ -47,6 +47,10 @@ function formatDateTime(date) {
   return date.toISOString().slice(0, 19).replace('T', ' ');
 }
 
+async function loadTableSchema(db) {
+  return allQuery(db, 'PRAGMA table_info(reklamacje)');
+}
+
 async function generateClaimNumber(db, year) {
   const prefix = `NZG-${year}-`;
   const rows = await allQuery(
@@ -67,6 +71,19 @@ async function generateClaimNumber(db, year) {
   return `${prefix}${String(maxSequence + 1).padStart(3, '0')}`;
 }
 
+app.get('/api/claims/schema', async (req, res) => {
+  const db = openDb(sqlite3.OPEN_READONLY);
+
+  try {
+    const schemaRows = await loadTableSchema(db);
+    res.json(schemaRows);
+  } catch (error) {
+    res.status(500).json({ error: `Failed to read schema: ${error.message}` });
+  } finally {
+    db.close();
+  }
+});
+
 app.get('/api/claims', async (req, res) => {
   const db = openDb(sqlite3.OPEN_READONLY);
   try {
@@ -83,7 +100,7 @@ app.post('/api/claims', async (req, res) => {
   const db = openDb(sqlite3.OPEN_READWRITE);
 
   try {
-    const schemaRows = await allQuery(db, 'PRAGMA table_info(reklamacje)');
+    const schemaRows = await loadTableSchema(db);
     const columns = new Set(schemaRows.map((row) => row.name));
     const incoming = req.body && typeof req.body === 'object' ? req.body : {};
 
@@ -111,6 +128,19 @@ app.post('/api/claims', async (req, res) => {
     }
 
     const entries = [...defaultEntries, ...allowedEntries];
+
+    const providedColumns = new Set(entries.map(([column]) => column));
+    const missingRequiredColumns = schemaRows
+      .filter((row) => row.notnull === 1 && row.dflt_value == null && row.pk === 0)
+      .map((row) => row.name)
+      .filter((column) => !providedColumns.has(column));
+
+    if (missingRequiredColumns.length) {
+      res.status(400).json({
+        error: `Missing required fields: ${missingRequiredColumns.join(', ')}`
+      });
+      return;
+    }
 
     if (!entries.length) {
       res.status(400).json({ error: 'No valid fields provided.' });
@@ -142,7 +172,7 @@ app.put('/api/claims/:rowId', async (req, res) => {
   }
 
   try {
-    const schemaRows = await allQuery(db, 'PRAGMA table_info(reklamacje)');
+    const schemaRows = await loadTableSchema(db);
     const allowedColumns = new Set(schemaRows.map((row) => row.name));
 
     const incoming = req.body && typeof req.body === 'object' ? req.body : {};

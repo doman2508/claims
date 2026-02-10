@@ -44,6 +44,7 @@ APP_ROOT=/custom/app/root DB_PATH=/custom/path/reklamacje.db npm run dev
 
 App URL: <http://localhost:5173>
 API URL: <http://localhost:3001/api/claims>
+Schema URL: <http://localhost:3001/api/claims/schema>
 
 ## Features
 
@@ -51,4 +52,5 @@ API URL: <http://localhost:3001/api/claims>
 - Global search field that filters by every visible field.
 - Button "Dodaj niezgodność" opens a dedicated modal form for new records.
 - Automatic defaults on create: `id` autoincrement, `data_zgloszenia` current date, `status`=`Nowe`, `utworzono` current datetime, `claim_number` in format `NZG-YYYY-001`.
+- Create form now reads database schema from API, so fields are shown correctly even when the table has zero rows.
 - Editing in a dedicated modal window with save/cancel actions.
