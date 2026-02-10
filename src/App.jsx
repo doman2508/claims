@@ -5,9 +5,9 @@ function App() {
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [editingRowId, setEditingRowId] = useState(null);
+  const [editingClaim, setEditingClaim] = useState(null);
   const [editDraft, setEditDraft] = useState({});
-  const [savingRowId, setSavingRowId] = useState(null);
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     async function loadClaims() {
@@ -42,8 +42,8 @@ function App() {
     );
   }, [claims, query]);
 
-  function startEdit(claim) {
-    setEditingRowId(claim._rowid_);
+  function openEditModal(claim) {
+    setEditingClaim(claim);
     const draft = {};
     editableColumns.forEach((column) => {
       draft[column] = String(claim[column] ?? '');
@@ -52,21 +52,22 @@ function App() {
     setError('');
   }
 
-  function cancelEdit() {
-    setEditingRowId(null);
+  function closeEditModal() {
+    setEditingClaim(null);
     setEditDraft({});
+    setIsSaving(false);
   }
 
   async function saveEdit() {
-    if (editingRowId == null) {
+    if (!editingClaim?._rowid_) {
       return;
     }
 
-    setSavingRowId(editingRowId);
+    setIsSaving(true);
     setError('');
 
     try {
-      const response = await fetch(`/api/claims/${editingRowId}`, {
+      const response = await fetch(`/api/claims/${editingClaim._rowid_}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json'
@@ -83,11 +84,10 @@ function App() {
       setClaims((previous) =>
         previous.map((claim) => (claim._rowid_ === updatedRow._rowid_ ? updatedRow : claim))
       );
-      cancelEdit();
+      closeEditModal();
     } catch (err) {
       setError(err.message);
-    } finally {
-      setSavingRowId(null);
+      setIsSaving(false);
     }
   }
 
@@ -140,55 +140,21 @@ function App() {
               <tbody className="divide-y divide-slate-100 bg-white">
                 {filteredClaims.map((claim, index) => {
                   const rowId = claim._rowid_ ?? index;
-                  const isEditing = editingRowId === rowId;
-                  const isSaving = savingRowId === rowId;
 
                   return (
                     <tr key={rowId} className="hover:bg-slate-50">
                       {columns.map((column) => (
                         <td key={`${rowId}-${column}`} className="px-4 py-3 align-top text-slate-700">
-                          {isEditing && column !== '_rowid_' ? (
-                            <input
-                              value={editDraft[column] ?? ''}
-                              onChange={(event) =>
-                                setEditDraft((draft) => ({
-                                  ...draft,
-                                  [column]: event.target.value
-                                }))
-                              }
-                              className="w-full min-w-28 rounded border border-slate-300 px-2 py-1 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                            />
-                          ) : (
-                            String(claim[column] ?? '')
-                          )}
+                          {String(claim[column] ?? '')}
                         </td>
                       ))}
                       <td className="px-4 py-3 whitespace-nowrap">
-                        {isEditing ? (
-                          <div className="flex gap-2">
-                            <button
-                              onClick={saveEdit}
-                              disabled={isSaving}
-                              className="rounded bg-blue-600 px-3 py-1.5 text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
-                            >
-                              {isSaving ? 'Saving...' : 'Save'}
-                            </button>
-                            <button
-                              onClick={cancelEdit}
-                              disabled={isSaving}
-                              className="rounded border border-slate-300 px-3 py-1.5 text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        ) : (
-                          <button
-                            onClick={() => startEdit(claim)}
-                            className="rounded border border-blue-300 px-3 py-1.5 text-blue-700 hover:bg-blue-50"
-                          >
-                            Edit
-                          </button>
-                        )}
+                        <button
+                          onClick={() => openEditModal(claim)}
+                          className="rounded border border-blue-300 px-3 py-1.5 text-blue-700 hover:bg-blue-50"
+                        >
+                          Edit
+                        </button>
                       </td>
                     </tr>
                   );
@@ -205,6 +171,63 @@ function App() {
           </div>
         )}
       </div>
+
+      {editingClaim && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
+          <div className="max-h-[90vh] w-full max-w-3xl overflow-hidden rounded-xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+              <div>
+                <h2 className="text-xl font-semibold text-slate-800">Edit claim</h2>
+                <p className="text-sm text-slate-500">Row ID: {editingClaim._rowid_}</p>
+              </div>
+              <button
+                onClick={closeEditModal}
+                disabled={isSaving}
+                className="rounded border border-slate-300 px-3 py-1.5 text-slate-600 hover:bg-slate-100 disabled:opacity-50"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="max-h-[60vh] overflow-y-auto px-6 py-5">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                {editableColumns.map((column) => (
+                  <div key={column} className="flex flex-col gap-1">
+                    <label className="text-sm font-medium text-slate-700">{column}</label>
+                    <input
+                      value={editDraft[column] ?? ''}
+                      onChange={(event) =>
+                        setEditDraft((draft) => ({
+                          ...draft,
+                          [column]: event.target.value
+                        }))
+                      }
+                      className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 border-t border-slate-200 px-6 py-4">
+              <button
+                onClick={closeEditModal}
+                disabled={isSaving}
+                className="rounded border border-slate-300 px-4 py-2 text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={saveEdit}
+                disabled={isSaving}
+                className="rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
+              >
+                {isSaving ? 'Saving...' : 'Save changes'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
