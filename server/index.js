@@ -1,10 +1,12 @@
 import cors from 'cors';
 import express from 'express';
+import path from 'node:path';
 import sqlite3 from 'sqlite3';
 
 const app = express();
 const port = process.env.PORT || 3001;
-const dbPath = process.env.DB_PATH || 'C:\\Users\\tomas\\projekty\\claims\\data\\reklamacje.db';
+const appRoot = process.env.APP_ROOT || process.cwd();
+const dbPath = process.env.DB_PATH || path.join(appRoot, 'data', 'reklamacje.db');
 
 app.use(cors());
 app.use(express.json());
@@ -91,5 +93,6 @@ app.put('/api/claims/:rowId', async (req, res) => {
 
 app.listen(port, () => {
   console.log(`Claims API listening on port ${port}`);
+  console.log(`Application root: ${appRoot}`);
   console.log(`Using SQLite database: ${dbPath}`);
 });
