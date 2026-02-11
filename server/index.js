@@ -244,7 +244,8 @@ app.post('/api/claims', authMiddleware, async (req, res) => {
       'status',
       'utworzono',
       'zglaszajacy',
-      'dzial'
+      'dzial',
+      'dept'
     ]);
     const allowedEntries = Object.entries(incoming).filter(
       ([key]) => columns.has(key) && !disallowedOnCreate.has(key.toLowerCase())
@@ -271,7 +272,7 @@ app.post('/api/claims', authMiddleware, async (req, res) => {
     if (reporterColumn) {
       defaultEntries.push([reporterColumn, req.user.fullName]);
     }
-    const deptColumn = findColumnName(schemaRows, 'dzial');
+    const deptColumn = findColumnName(schemaRows, 'dept') || findColumnName(schemaRows, 'dzial');
     if (deptColumn) {
       defaultEntries.push([deptColumn, req.user.dept || '']);
     }
