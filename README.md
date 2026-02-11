@@ -64,3 +64,4 @@ Schema URL: <http://localhost:3001/api/claims/schema>
 - Users table contains department field `dept` (label: `DZIAŁ`).
 - Admin sees all claims. Standard users see only their own claims (`zglaszajacy` == their Name + Surname).
 - On create, `zglaszajacy` is automatically filled with logged user Name + Surname.
+- On create, `dzial` is automatically filled from logged user department (`DZIAŁ`).
