@@ -186,8 +186,17 @@ function App() {
       return !hiddenMainListColumns.has(lower) && !mainListOrder.includes(lower);
     });
 
-    return [...ordered, ...extras];
-  }, [columns]);
+    const withOptionalDept = [...ordered, ...extras];
+    const hasDeptColumn = withOptionalDept.some((column) => ['dept', 'dzial'].includes(column.toLowerCase()));
+
+    if (!hasDeptColumn && user?.dept) {
+      const reporterIndex = withOptionalDept.findIndex((column) => column.toLowerCase() === 'zglaszajacy');
+      const insertIndex = reporterIndex >= 0 ? reporterIndex + 1 : withOptionalDept.length;
+      withOptionalDept.splice(insertIndex, 0, '__dept__');
+    }
+
+    return withOptionalDept;
+  }, [columns, user]);
 
   const addFormColumns = useMemo(() => {
     if (schema.length) {
@@ -399,7 +408,7 @@ function App() {
                           isKkw ? 'whitespace-nowrap w-44' : ''
                         } ${isTytulZgloszenia ? 'min-w-[26rem]' : ''}`}
                       >
-                        {lowerColumn === 'dept' ? 'DZIAŁ' : column}
+                        {['dept', 'dzial', '__dept__'].includes(lowerColumn) ? 'DZIAŁ' : column}
                       </th>
                     );
                   })}
@@ -424,7 +433,11 @@ function App() {
                               isKkw ? 'whitespace-nowrap w-44' : ''
                             } ${isTytulZgloszenia ? 'min-w-[26rem]' : ''}`}
                           >
-                            {String(claim[column] ?? '')}
+                            {String(
+                              lowerColumn === '__dept__'
+                                ? user?.dept || ''
+                                : claim[column] ?? claim.dept ?? claim.dzial ?? ''
+                            )}
                           </td>
                         );
                       })}
