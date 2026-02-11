@@ -7,6 +7,7 @@ const mainListOrder = [
   'kkw',
   'kod_wyrobu',
   'nazwa_wyrobu',
+  'tytul_zgloszenia',
   'tytul',
   'ilosc',
   'status',
@@ -255,11 +256,22 @@ function App() {
             <table className="min-w-full divide-y divide-slate-200 text-sm">
               <thead className="bg-slate-50">
                 <tr>
-                  {displayColumns.map((column) => (
-                    <th key={column} className="px-4 py-3 text-left font-semibold uppercase tracking-wide text-slate-600">
-                      {column}
-                    </th>
-                  ))}
+                  {displayColumns.map((column) => {
+                    const lowerColumn = column.toLowerCase();
+                    const isKkw = lowerColumn === 'kkw';
+                    const isTytulZgloszenia = lowerColumn === 'tytul_zgloszenia';
+
+                    return (
+                      <th
+                        key={column}
+                        className={`px-4 py-3 text-left font-semibold uppercase tracking-wide text-slate-600 ${
+                          isKkw ? 'whitespace-nowrap w-44' : ''
+                        } ${isTytulZgloszenia ? 'min-w-[26rem]' : ''}`}
+                      >
+                        {column}
+                      </th>
+                    );
+                  })}
                   <th className="px-4 py-3 text-left font-semibold uppercase tracking-wide text-slate-600">actions</th>
                 </tr>
               </thead>
@@ -269,11 +281,22 @@ function App() {
 
                   return (
                     <tr key={rowId} className="hover:bg-slate-50">
-                      {displayColumns.map((column) => (
-                        <td key={`${rowId}-${column}`} className="px-4 py-3 align-top text-slate-700">
-                          {String(claim[column] ?? '')}
-                        </td>
-                      ))}
+                      {displayColumns.map((column) => {
+                        const lowerColumn = column.toLowerCase();
+                        const isKkw = lowerColumn === 'kkw';
+                        const isTytulZgloszenia = lowerColumn === 'tytul_zgloszenia';
+
+                        return (
+                          <td
+                            key={`${rowId}-${column}`}
+                            className={`px-4 py-3 align-top text-slate-700 ${
+                              isKkw ? 'whitespace-nowrap w-44' : ''
+                            } ${isTytulZgloszenia ? 'min-w-[26rem]' : ''}`}
+                          >
+                            {String(claim[column] ?? '')}
+                          </td>
+                        );
+                      })}
                       <td className="px-4 py-3 whitespace-nowrap">
                         <button
                           onClick={() => openEditModal(claim)}
