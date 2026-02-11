@@ -67,6 +67,32 @@ function buildFullName(user) {
   return `${user.first_name ?? ''} ${user.last_name ?? ''}`.trim();
 }
 
+async function enrichClaimsWithDept(db, rows) {
+  if (!rows.length) {
+    return rows;
+  }
+
+  const users = await allQuery(db, 'SELECT first_name, last_name, dept FROM users');
+  const deptByFullName = new Map(
+    users.map((user) => [buildFullName(user), user.dept ?? ''])
+  );
+
+  return rows.map((row) => {
+    const existingDept = row.dept ?? row.dzial;
+    if (existingDept) {
+      return row;
+    }
+
+    const reporter = String(row.zglaszajacy ?? '');
+    const mappedDept = deptByFullName.get(reporter) ?? '';
+
+    return {
+      ...row,
+      dept: mappedDept
+    };
+  });
+}
+
 async function generateClaimNumber(db, year) {
   const prefix = `NZG-${year}-`;
   const rows = await allQuery(
@@ -211,7 +237,8 @@ app.get('/api/claims', authMiddleware, async (req, res) => {
 
     if (req.user.role === 'admin' || !reporterColumn) {
       const rows = await allQuery(db, 'SELECT rowid AS _rowid_, * FROM reklamacje');
-      res.json(rows);
+      const rowsWithDept = await enrichClaimsWithDept(db, rows);
+      res.json(rowsWithDept);
       return;
     }
 
@@ -220,7 +247,8 @@ app.get('/api/claims', authMiddleware, async (req, res) => {
       `SELECT rowid AS _rowid_, * FROM reklamacje WHERE "${reporterColumn.replaceAll('"', '""')}" = ?`,
       [req.user.fullName]
     );
-    res.json(rows);
+    const rowsWithDept = await enrichClaimsWithDept(db, rows);
+    res.json(rowsWithDept);
   } catch (error) {
     res.status(500).json({ error: `Failed to read table reklamacje: ${error.message}` });
   } finally {
