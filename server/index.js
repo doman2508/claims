@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import cors from 'cors';
 import express from 'express';
 import path from 'node:path';
@@ -7,6 +8,8 @@ const app = express();
 const port = process.env.PORT || 3001;
 const appRoot = process.env.APP_ROOT || process.cwd();
 const dbPath = process.env.DB_PATH || path.join(appRoot, 'data', 'reklamacje.db');
+
+const sessions = new Map();
 
 app.use(cors());
 app.use(express.json());
@@ -39,6 +42,11 @@ function allQuery(db, sql, params = []) {
   });
 }
 
+async function oneQuery(db, sql, params = []) {
+  const rows = await allQuery(db, sql, params);
+  return rows[0] ?? null;
+}
+
 function formatDateOnly(date) {
   return date.toISOString().slice(0, 10);
 }
@@ -49,6 +57,14 @@ function formatDateTime(date) {
 
 async function loadTableSchema(db) {
   return allQuery(db, 'PRAGMA table_info(reklamacje)');
+}
+
+function findColumnName(schemaRows, expectedLowerName) {
+  return schemaRows.find((row) => row.name?.toLowerCase() === expectedLowerName)?.name ?? null;
+}
+
+function buildFullName(user) {
+  return `${user.first_name ?? ''} ${user.last_name ?? ''}`.trim();
 }
 
 async function generateClaimNumber(db, year) {
@@ -71,7 +87,102 @@ async function generateClaimNumber(db, year) {
   return `${prefix}${String(maxSequence + 1).padStart(3, '0')}`;
 }
 
-app.get('/api/claims/schema', async (req, res) => {
+async function ensureUsersTable() {
+  const db = openDb(sqlite3.OPEN_READWRITE | sqlite3.OPEN_CREATE);
+
+  try {
+    await runQuery(
+      db,
+      `CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT NOT NULL UNIQUE,
+        password TEXT NOT NULL,
+        first_name TEXT NOT NULL,
+        last_name TEXT NOT NULL,
+        role TEXT NOT NULL
+      )`
+    );
+
+    const adminUser = await oneQuery(db, 'SELECT id FROM users WHERE username = ?', ['TODO']);
+    if (!adminUser) {
+      await runQuery(
+        db,
+        'INSERT INTO users (username, password, first_name, last_name, role) VALUES (?, ?, ?, ?, ?)',
+        ['TODO', '1234', 'TODO', '', 'admin']
+      );
+      console.log('Created default admin user: TODO / 1234');
+    }
+  } finally {
+    db.close();
+  }
+}
+
+function authMiddleware(req, res, next) {
+  const header = req.headers.authorization || '';
+  const token = header.startsWith('Bearer ') ? header.slice(7) : null;
+
+  if (!token || !sessions.has(token)) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+
+  req.user = sessions.get(token);
+  req.token = token;
+  next();
+}
+
+app.post('/api/auth/login', async (req, res) => {
+  const db = openDb(sqlite3.OPEN_READONLY);
+  const username = String(req.body?.username ?? '').trim();
+  const password = String(req.body?.password ?? '');
+
+  if (!username || !password) {
+    res.status(400).json({ error: 'Username and password are required.' });
+    db.close();
+    return;
+  }
+
+  try {
+    const user = await oneQuery(
+      db,
+      'SELECT id, username, first_name, last_name, role FROM users WHERE username = ? AND password = ?',
+      [username, password]
+    );
+
+    if (!user) {
+      res.status(401).json({ error: 'Invalid username or password.' });
+      return;
+    }
+
+    const token = crypto.randomUUID();
+    const sessionUser = {
+      id: user.id,
+      username: user.username,
+      first_name: user.first_name,
+      last_name: user.last_name,
+      fullName: buildFullName(user),
+      role: user.role
+    };
+
+    sessions.set(token, sessionUser);
+    res.json({ token, user: sessionUser });
+  } catch (error) {
+    res.status(500).json({ error: `Failed to login: ${error.message}` });
+  } finally {
+    db.close();
+  }
+});
+
+app.post('/api/auth/logout', authMiddleware, (req, res) => {
+  sessions.delete(req.token);
+  res.json({ ok: true });
+});
+
+app.get('/api/auth/me', authMiddleware, (req, res) => {
+  res.json({ user: req.user });
+});
+
+app.get('/api/claims/schema', authMiddleware, async (req, res) => {
   const db = openDb(sqlite3.OPEN_READONLY);
 
   try {
@@ -84,10 +195,23 @@ app.get('/api/claims/schema', async (req, res) => {
   }
 });
 
-app.get('/api/claims', async (req, res) => {
+app.get('/api/claims', authMiddleware, async (req, res) => {
   const db = openDb(sqlite3.OPEN_READONLY);
   try {
-    const rows = await allQuery(db, 'SELECT rowid AS _rowid_, * FROM reklamacje');
+    const schemaRows = await loadTableSchema(db);
+    const reporterColumn = findColumnName(schemaRows, 'zglaszajacy');
+
+    if (req.user.role === 'admin' || !reporterColumn) {
+      const rows = await allQuery(db, 'SELECT rowid AS _rowid_, * FROM reklamacje');
+      res.json(rows);
+      return;
+    }
+
+    const rows = await allQuery(
+      db,
+      `SELECT rowid AS _rowid_, * FROM reklamacje WHERE "${reporterColumn.replaceAll('"', '""')}" = ?`,
+      [req.user.fullName]
+    );
     res.json(rows);
   } catch (error) {
     res.status(500).json({ error: `Failed to read table reklamacje: ${error.message}` });
@@ -96,7 +220,7 @@ app.get('/api/claims', async (req, res) => {
   }
 });
 
-app.post('/api/claims', async (req, res) => {
+app.post('/api/claims', authMiddleware, async (req, res) => {
   const db = openDb(sqlite3.OPEN_READWRITE);
 
   try {
@@ -104,9 +228,17 @@ app.post('/api/claims', async (req, res) => {
     const columns = new Set(schemaRows.map((row) => row.name));
     const incoming = req.body && typeof req.body === 'object' ? req.body : {};
 
-    const disallowedOnCreate = new Set(['id', '_rowid_', 'claim_number', 'data_zgloszenia', 'status', 'utworzono']);
+    const disallowedOnCreate = new Set([
+      'id',
+      '_rowid_',
+      'claim_number',
+      'data_zgloszenia',
+      'status',
+      'utworzono',
+      'zglaszajacy'
+    ]);
     const allowedEntries = Object.entries(incoming).filter(
-      ([key]) => columns.has(key) && !disallowedOnCreate.has(key)
+      ([key]) => columns.has(key) && !disallowedOnCreate.has(key.toLowerCase())
     );
 
     const now = new Date();
@@ -125,6 +257,10 @@ app.post('/api/claims', async (req, res) => {
     if (columns.has('claim_number')) {
       const nextClaimNumber = await generateClaimNumber(db, year);
       defaultEntries.push(['claim_number', nextClaimNumber]);
+    }
+    const reporterColumn = findColumnName(schemaRows, 'zglaszajacy');
+    if (reporterColumn) {
+      defaultEntries.push([reporterColumn, req.user.fullName]);
     }
 
     const entries = [...defaultEntries, ...allowedEntries];
@@ -161,7 +297,7 @@ app.post('/api/claims', async (req, res) => {
   }
 });
 
-app.put('/api/claims/:rowId', async (req, res) => {
+app.put('/api/claims/:rowId', authMiddleware, async (req, res) => {
   const db = openDb(sqlite3.OPEN_READWRITE);
   const rowId = Number(req.params.rowId);
 
@@ -174,6 +310,25 @@ app.put('/api/claims/:rowId', async (req, res) => {
   try {
     const schemaRows = await loadTableSchema(db);
     const allowedColumns = new Set(schemaRows.map((row) => row.name));
+
+    if (req.user.role !== 'admin') {
+      const reporterColumn = findColumnName(schemaRows, 'zglaszajacy');
+      if (reporterColumn) {
+        const row = await oneQuery(
+          db,
+          `SELECT "${reporterColumn.replaceAll('"', '""')}" AS reporter FROM reklamacje WHERE rowid = ?`,
+          [rowId]
+        );
+        if (!row) {
+          res.status(404).json({ error: 'Claim row not found.' });
+          return;
+        }
+        if (String(row.reporter ?? '') !== req.user.fullName) {
+          res.status(403).json({ error: 'Forbidden: you can edit only your own claims.' });
+          return;
+        }
+      }
+    }
 
     const incoming = req.body && typeof req.body === 'object' ? req.body : {};
     const entries = Object.entries(incoming).filter(([key]) => allowedColumns.has(key));
@@ -200,6 +355,8 @@ app.put('/api/claims/:rowId', async (req, res) => {
     db.close();
   }
 });
+
+await ensureUsersTable();
 
 app.listen(port, () => {
   console.log(`Claims API listening on port ${port}`);

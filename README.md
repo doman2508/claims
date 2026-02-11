@@ -54,3 +54,12 @@ Schema URL: <http://localhost:3001/api/claims/schema>
 - Automatic defaults on create: `id` autoincrement, `data_zgloszenia` current date, `status`=`Nowe`, `utworzono` current datetime, `claim_number` in format `NZG-YYYY-001`.
 - Create form now reads database schema from API, so fields are shown correctly even when the table has zero rows.
 - Editing in a dedicated modal window with save/cancel actions.
+
+
+## Authentication
+
+- App requires login to view claims.
+- Default seeded admin user: `TODO`
+- Password: `1234`
+- Admin sees all claims. Standard users see only their own claims (`zglaszajacy` == their Name + Surname).
+- On create, `zglaszajacy` is automatically filled with logged user Name + Surname.
