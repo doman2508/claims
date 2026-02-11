@@ -35,6 +35,7 @@ function App() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [newClaimDraft, setNewClaimDraft] = useState({});
   const [isCreating, setIsCreating] = useState(false);
+  const [deletingRowId, setDeletingRowId] = useState(null);
 
   function clearAuth() {
     localStorage.removeItem('claims_token');
@@ -279,6 +280,37 @@ function App() {
     }
   }
 
+
+  async function deleteClaim(rowId) {
+    const confirmed = window.confirm('Czy na pewno usunąć tę reklamację?');
+    if (!confirmed) {
+      return;
+    }
+
+    setDeletingRowId(rowId);
+    setError('');
+
+    try {
+      const response = await authFetch(`/api/claims/${rowId}`, {
+        method: 'DELETE'
+      });
+
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload.error || 'Failed to delete claim');
+      }
+
+      setClaims((previous) => previous.filter((claim) => claim._rowid_ !== rowId));
+      if (editingClaim?._rowid_ === rowId) {
+        closeEditModal();
+      }
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setDeletingRowId(null);
+    }
+  }
+
   async function saveEdit() {
     if (!editingClaim?._rowid_) {
       return;
@@ -444,12 +476,21 @@ function App() {
                         );
                       })}
                       <td className="px-4 py-3 whitespace-nowrap">
-                        <button
-                          onClick={() => openEditModal(claim)}
-                          className="rounded border border-blue-300 px-3 py-1.5 text-blue-700 hover:bg-blue-50"
-                        >
-                          Edit
-                        </button>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => openEditModal(claim)}
+                            className="rounded border border-blue-300 px-3 py-1.5 text-blue-700 hover:bg-blue-50"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => deleteClaim(rowId)}
+                            disabled={deletingRowId === rowId}
+                            className="rounded border border-red-300 px-3 py-1.5 text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {deletingRowId === rowId ? 'Deleting...' : 'Delete'}
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );

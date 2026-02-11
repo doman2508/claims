@@ -54,6 +54,7 @@ Schema URL: <http://localhost:3001/api/claims/schema>
 - Automatic defaults on create: `id` autoincrement, `data_zgloszenia` current date, `status`=`Nowe`, `utworzono` current datetime, `claim_number` in format `NZG-YYYY-001`.
 - Create form now reads database schema from API, so fields are shown correctly even when the table has zero rows.
 - Editing in a dedicated modal window with save/cancel actions.
+- Delete action in claims list for removing current claim.
 
 
 ## Authentication

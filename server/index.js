@@ -339,6 +339,34 @@ app.post('/api/claims', authMiddleware, async (req, res) => {
   }
 });
 
+
+async function ensureUserCanAccessRow(db, schemaRows, rowId, user) {
+  if (user.role === 'admin') {
+    return { ok: true };
+  }
+
+  const reporterColumn = findColumnName(schemaRows, 'zglaszajacy');
+  if (!reporterColumn) {
+    return { ok: true };
+  }
+
+  const row = await oneQuery(
+    db,
+    `SELECT "${reporterColumn.replaceAll('"', '""')}" AS reporter FROM reklamacje WHERE rowid = ?`,
+    [rowId]
+  );
+
+  if (!row) {
+    return { ok: false, status: 404, error: 'Claim row not found.' };
+  }
+
+  if (String(row.reporter ?? '') !== user.fullName) {
+    return { ok: false, status: 403, error: 'Forbidden: you can modify only your own claims.' };
+  }
+
+  return { ok: true };
+}
+
 app.put('/api/claims/:rowId', authMiddleware, async (req, res) => {
   const db = openDb(sqlite3.OPEN_READWRITE);
   const rowId = Number(req.params.rowId);
@@ -353,23 +381,10 @@ app.put('/api/claims/:rowId', authMiddleware, async (req, res) => {
     const schemaRows = await loadTableSchema(db);
     const allowedColumns = new Set(schemaRows.map((row) => row.name));
 
-    if (req.user.role !== 'admin') {
-      const reporterColumn = findColumnName(schemaRows, 'zglaszajacy');
-      if (reporterColumn) {
-        const row = await oneQuery(
-          db,
-          `SELECT "${reporterColumn.replaceAll('"', '""')}" AS reporter FROM reklamacje WHERE rowid = ?`,
-          [rowId]
-        );
-        if (!row) {
-          res.status(404).json({ error: 'Claim row not found.' });
-          return;
-        }
-        if (String(row.reporter ?? '') !== req.user.fullName) {
-          res.status(403).json({ error: 'Forbidden: you can edit only your own claims.' });
-          return;
-        }
-      }
+    const access = await ensureUserCanAccessRow(db, schemaRows, rowId, req.user);
+    if (!access.ok) {
+      res.status(access.status).json({ error: access.error });
+      return;
     }
 
     const incoming = req.body && typeof req.body === 'object' ? req.body : {};
@@ -399,6 +414,39 @@ app.put('/api/claims/:rowId', authMiddleware, async (req, res) => {
 });
 
 await ensureUsersTable();
+
+
+app.delete('/api/claims/:rowId', authMiddleware, async (req, res) => {
+  const db = openDb(sqlite3.OPEN_READWRITE);
+  const rowId = Number(req.params.rowId);
+
+  if (!Number.isInteger(rowId)) {
+    res.status(400).json({ error: 'Invalid row id.' });
+    db.close();
+    return;
+  }
+
+  try {
+    const schemaRows = await loadTableSchema(db);
+    const access = await ensureUserCanAccessRow(db, schemaRows, rowId, req.user);
+    if (!access.ok) {
+      res.status(access.status).json({ error: access.error });
+      return;
+    }
+
+    const result = await runQuery(db, 'DELETE FROM reklamacje WHERE rowid = ?', [rowId]);
+    if (!result.changes) {
+      res.status(404).json({ error: 'Claim row not found.' });
+      return;
+    }
+
+    res.json({ ok: true, rowId });
+  } catch (error) {
+    res.status(500).json({ error: `Failed to delete row: ${error.message}` });
+  } finally {
+    db.close();
+  }
+});
 
 app.listen(port, () => {
   console.log(`Claims API listening on port ${port}`);
