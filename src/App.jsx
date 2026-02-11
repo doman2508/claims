@@ -600,21 +600,37 @@ function App() {
 
             <div className="max-h-[60vh] overflow-y-auto px-6 py-5">
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                {editableColumns.map((column) => (
-                  <div key={column} className="flex flex-col gap-1">
-                    <label className="text-sm font-medium text-slate-700">{column}</label>
-                    <input
-                      value={editDraft[column] ?? ''}
-                      onChange={(event) =>
-                        setEditDraft((draft) => ({
-                          ...draft,
-                          [column]: event.target.value
-                        }))
-                      }
-                      className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    />
-                  </div>
-                ))}
+                {editableColumns
+                  .filter((column) => column.toLowerCase() !== 'id')
+                  .map((column) => {
+                    const lowerColumn = column.toLowerCase();
+                    const isReadOnlyField = ['data_zgloszenia', 'utworzono', 'zglaszajacy', 'claim_number', 'dept', 'dzial'].includes(
+                      lowerColumn
+                    );
+
+                    return (
+                      <div key={column} className="flex flex-col gap-1">
+                        <label className="text-sm font-medium text-slate-700">
+                          {['dept', 'dzial'].includes(lowerColumn) ? 'Dział' : column}
+                        </label>
+                        <input
+                          value={editDraft[column] ?? ''}
+                          onChange={(event) =>
+                            setEditDraft((draft) => ({
+                              ...draft,
+                              [column]: event.target.value
+                            }))
+                          }
+                          disabled={isReadOnlyField}
+                          className={`w-full rounded border px-3 py-2 text-sm ${
+                            isReadOnlyField
+                              ? 'cursor-not-allowed border-slate-200 bg-slate-100 text-slate-500'
+                              : 'border-slate-300 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500'
+                          }`}
+                        />
+                      </div>
+                    );
+                  })}
               </div>
             </div>
 
