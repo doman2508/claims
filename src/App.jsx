@@ -16,6 +16,7 @@ const mainListSpec = [
 ];
 
 const hiddenMainListColumns = new Set(['_rowid_', 'id', 'opis', 'data_zgloszenia']);
+const showAutoFieldsSection = false;
 
 function App() {
   const [claims, setClaims] = useState([]);
@@ -526,18 +527,20 @@ function App() {
             </div>
 
             <div className="space-y-4 overflow-y-auto px-6 py-5">
-              <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">
-                <p className="font-medium">Pola automatyczne:</p>
-                <ul className="list-disc pl-5">
-                  <li>ID: autoincrement z bazy danych</li>
-                  <li>data_zgloszenia: dzisiejsza data</li>
-                  <li>status: Nowe</li>
-                  <li>utworzono: aktualna data i czas</li>
-                  <li>claim_number: format NZG-YYYY-001</li>
-                  <li>zglaszajacy: {user?.fullName || user?.username}</li>
-                  <li>dział: {user?.dept || '-'}</li>
-                </ul>
-              </div>
+              {showAutoFieldsSection && (
+                <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">
+                  <p className="font-medium">Pola automatyczne:</p>
+                  <ul className="list-disc pl-5">
+                    <li>ID: autoincrement z bazy danych</li>
+                    <li>data_zgloszenia: dzisiejsza data</li>
+                    <li>status: Nowe</li>
+                    <li>utworzono: aktualna data i czas</li>
+                    <li>claim_number: format NZG-YYYY-001</li>
+                    <li>zglaszajacy: {user?.fullName || user?.username}</li>
+                    <li>dział: {user?.dept || '-'}</li>
+                  </ul>
+                </div>
+              )}
 
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 {addFormColumns.map((column) => (
