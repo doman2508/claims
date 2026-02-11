@@ -338,7 +338,7 @@ function App() {
         <header className="mb-6 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <div>
             <h1 className="text-3xl font-bold tracking-tight">Reported Claims</h1>
-            <p className="mt-1 text-sm text-slate-500">Użytkownik: {user?.fullName || user?.username} ({user?.role})</p>
+            <p className="mt-1 text-sm text-slate-500">Użytkownik: {user?.fullName || user?.username} ({user?.role}) • DZIAŁ: {user?.dept || "-"}</p>
           </div>
 
           <div className="flex w-full flex-col gap-2 md:w-auto md:items-end">

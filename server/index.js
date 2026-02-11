@@ -99,16 +99,23 @@ async function ensureUsersTable() {
         password TEXT NOT NULL,
         first_name TEXT NOT NULL,
         last_name TEXT NOT NULL,
-        role TEXT NOT NULL
+        role TEXT NOT NULL,
+        dept TEXT NOT NULL DEFAULT ""
       )`
     );
+
+    const usersSchema = await allQuery(db, 'PRAGMA table_info(users)');
+    const hasDept = usersSchema.some((column) => column.name === 'dept');
+    if (!hasDept) {
+      await runQuery(db, 'ALTER TABLE users ADD COLUMN dept TEXT NOT NULL DEFAULT ""');
+    }
 
     const adminUser = await oneQuery(db, 'SELECT id FROM users WHERE username = ?', ['TODO']);
     if (!adminUser) {
       await runQuery(
         db,
-        'INSERT INTO users (username, password, first_name, last_name, role) VALUES (?, ?, ?, ?, ?)',
-        ['TODO', '1234', 'TODO', '', 'admin']
+        'INSERT INTO users (username, password, first_name, last_name, role, dept) VALUES (?, ?, ?, ?, ?, ?)',
+        ['TODO', '1234', 'TODO', '', 'admin', 'DZIAŁ']
       );
       console.log('Created default admin user: TODO / 1234');
     }
@@ -145,7 +152,7 @@ app.post('/api/auth/login', async (req, res) => {
   try {
     const user = await oneQuery(
       db,
-      'SELECT id, username, first_name, last_name, role FROM users WHERE username = ? AND password = ?',
+      'SELECT id, username, first_name, last_name, role, dept FROM users WHERE username = ? AND password = ?',
       [username, password]
     );
 
@@ -161,7 +168,8 @@ app.post('/api/auth/login', async (req, res) => {
       first_name: user.first_name,
       last_name: user.last_name,
       fullName: buildFullName(user),
-      role: user.role
+      role: user.role,
+      dept: user.dept
     };
 
     sessions.set(token, sessionUser);
